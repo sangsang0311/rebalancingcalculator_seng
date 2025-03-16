@@ -123,11 +123,14 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
   final currencyFormatter = NumberFormat.currency(locale: 'ko_KR', symbol: '', decimalDigits: 0);
   final cashController = TextEditingController();
   
-  int assetCount = 1;
-  List<String> assetNames = [''];
-  List<TextEditingController> assetNameControllers = [TextEditingController()];
-  List<TextEditingController> assetValueControllers = [TextEditingController()];
-  List<int> assetTargetRatios = [0];
+  // 항상 5개의 자산을 유지 (UI에 표시할 개수와는 별도)
+  static const int maxAssetCount = 5;
+  int displayAssetCount = 1; // UI에 표시할 자산 개수
+  
+  // 항상 5개의 컨트롤러와 데이터를 유지
+  late List<TextEditingController> allAssetNameControllers;
+  late List<TextEditingController> allAssetValueControllers;
+  late List<int> allAssetTargetRatios;
   
   double totalAmount = 0;
   List<Map<String, dynamic>> adjustmentResults = [];
@@ -137,16 +140,21 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
   @override
   void initState() {
     super.initState();
+    // 항상 5개의 컨트롤러 생성
+    allAssetNameControllers = List.generate(maxAssetCount, (_) => TextEditingController());
+    allAssetValueControllers = List.generate(maxAssetCount, (_) => TextEditingController());
+    allAssetTargetRatios = List.filled(maxAssetCount, 0);
+    
     loadState();
   }
   
   @override
   void dispose() {
     cashController.dispose();
-    for (var controller in assetValueControllers) {
+    for (var controller in allAssetNameControllers) {
       controller.dispose();
     }
-    for (var controller in assetNameControllers) {
+    for (var controller in allAssetValueControllers) {
       controller.dispose();
     }
     super.dispose();
@@ -157,26 +165,18 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     try {
       final prefs = await SharedPreferences.getInstance();
       
-      // 전체 데이터를 저장할 배열 생성 (최대 5개까지 저장)
-      // 현재 설정된 개수보다 적더라도, 이전에 입력한 모든 값을 저장
-      final allAssetNames = List<String>.filled(5, '');
-      final allAssetValues = List<String>.filled(5, '');
-      final allAssetRatios = List<int>.filled(5, 0);
+      // 모든 자산 데이터 수집
+      final allNames = allAssetNameControllers.map((c) => c.text).toList();
+      final allValues = allAssetValueControllers.map((c) => c.text).toList();
+      final allRatios = allAssetTargetRatios.toList();
       
-      // 현재 있는 데이터를 복사
-      for (int i = 0; i < assetNameControllers.length; i++) {
-        allAssetNames[i] = assetNameControllers[i].text;
-        allAssetValues[i] = assetValueControllers[i].text;
-        allAssetRatios[i] = assetTargetRatios[i];
-      }
-      
-      // 상태 저장 - 현재 설정과 모든 값을 저장
+      // 상태 저장
       final state = {
         'cash_value': cashController.text,
-        'asset_count': assetCount,
-        'all_asset_names': allAssetNames, // 모든 자산 이름 (5개 고정)
-        'all_asset_values': allAssetValues, // 모든 자산 값 (5개 고정)
-        'all_asset_ratios': allAssetRatios, // 모든 자산 비율 (5개 고정)
+        'display_asset_count': displayAssetCount,
+        'all_asset_names': allNames,
+        'all_asset_values': allValues,
+        'all_asset_ratios': allRatios,
       };
       await prefs.setString('rebalancing_state', jsonEncode(state));
     } catch (e) {
@@ -193,43 +193,27 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
         final state = jsonDecode(stateJson);
         setState(() {
           cashController.text = state['cash_value'] ?? '';
-          assetCount = state['asset_count'] ?? 1;
+          displayAssetCount = state['display_asset_count'] ?? 1;
           
           // 저장된 모든 자산 데이터 로드
-          final allAssetNames = List<String>.from(state['all_asset_names'] ?? List<String>.filled(5, ''));
-          final allAssetValues = List<String>.from(state['all_asset_values'] ?? List<String>.filled(5, ''));
-          final allAssetRatios = List<int>.from(state['all_asset_ratios'] ?? List<int>.filled(5, 0));
+          final savedNames = List<String>.from(state['all_asset_names'] ?? []);
+          final savedValues = List<String>.from(state['all_asset_values'] ?? []);
+          final savedRatios = List<int>.from(state['all_asset_ratios'] ?? []);
           
-          // 기존 컨트롤러 해제
-          for (var controller in assetNameControllers) {
-            controller.dispose();
+          // 저장된 데이터를 컨트롤러에 설정
+          for (int i = 0; i < maxAssetCount; i++) {
+            if (i < savedNames.length) {
+              allAssetNameControllers[i].text = savedNames[i];
+            }
+            
+            if (i < savedValues.length) {
+              allAssetValueControllers[i].text = savedValues[i];
+            }
+            
+            if (i < savedRatios.length) {
+              allAssetTargetRatios[i] = savedRatios[i];
+            }
           }
-          for (var controller in assetValueControllers) {
-            controller.dispose();
-          }
-          
-          // 현재 표시할 자산 개수만큼 컨트롤러 생성
-          assetNameControllers = List.generate(
-            assetCount, 
-            (i) => TextEditingController(text: i < allAssetNames.length ? allAssetNames[i] : '')
-          );
-          
-          assetValueControllers = List.generate(
-            assetCount, 
-            (i) => TextEditingController(text: i < allAssetValues.length ? allAssetValues[i] : '')
-          );
-          
-          // 목표 비율 설정
-          assetTargetRatios = List.generate(
-            assetCount,
-            (i) => i < allAssetRatios.length ? allAssetRatios[i] : 0
-          );
-          
-          // 자산 이름 목록 업데이트
-          assetNames = List.generate(
-            assetCount,
-            (i) => i < allAssetNames.length ? allAssetNames[i] : ''
-          );
         });
         
         updateTotalAmount();
@@ -239,58 +223,12 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     }
   }
   
-  // 자산 개수 업데이트
+  // 자산 개수 업데이트 (UI에 표시할 개수만 변경)
   void updateAssetCount(int newCount) {
-    if (newCount < 1 || newCount > 5) return;
-
+    if (newCount < 1 || newCount > maxAssetCount) return;
+    
     setState(() {
-      // 현재 값 임시 보관 (최대 5개까지의 모든 값)
-      List<String> tempNames = List<String>.filled(5, '');
-      List<String> tempValues = List<String>.filled(5, '');
-      List<int> tempRatios = List<int>.filled(5, 0);
-      
-      // 현재 컨트롤러의 모든 값 저장
-      for (int i = 0; i < assetNameControllers.length; i++) {
-        if (i < 5) {
-          tempNames[i] = assetNameControllers[i].text;
-          tempValues[i] = assetValueControllers[i].text;
-          tempRatios[i] = assetTargetRatios[i];
-        }
-      }
-      
-      // 기존 컨트롤러 해제
-      for (var controller in assetNameControllers) {
-        controller.dispose();
-      }
-      for (var controller in assetValueControllers) {
-        controller.dispose();
-      }
-      
-      // 자산 개수 업데이트
-      assetCount = newCount;
-      
-      // 새 컨트롤러 생성 (이전 값 보존)
-      assetNameControllers = List.generate(
-        newCount,
-        (i) => TextEditingController(text: i < tempNames.length ? tempNames[i] : '')
-      );
-      
-      assetValueControllers = List.generate(
-        newCount,
-        (i) => TextEditingController(text: i < tempValues.length ? tempValues[i] : '')
-      );
-      
-      // 목표 비율 설정 (이전 값 보존)
-      assetTargetRatios = List.generate(
-        newCount,
-        (i) => i < tempRatios.length ? tempRatios[i] : 0
-      );
-      
-      // 자산 이름 목록 업데이트
-      assetNames = List.generate(
-        newCount,
-        (i) => i < tempNames.length ? tempNames[i] : ''
-      );
+      displayAssetCount = newCount;
     });
     
     saveState();
@@ -301,8 +239,9 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     double cash = double.tryParse(cashController.text.replaceAll(',', '')) ?? 0;
     double assetsSum = 0;
     
-    for (var controller in assetValueControllers) {
-      assetsSum += double.tryParse(controller.text.replaceAll(',', '')) ?? 0;
+    // 현재 표시된 자산만 총액에 포함
+    for (int i = 0; i < displayAssetCount; i++) {
+      assetsSum += double.tryParse(allAssetValueControllers[i].text.replaceAll(',', '')) ?? 0;
     }
     
     setState(() {
@@ -337,22 +276,30 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
   }
   
   int getCashTargetRatio() {
-    int sum = assetTargetRatios.fold(0, (sum, ratio) => sum + ratio);
+    // 현재 표시된 자산의 목표 비율만 합산
+    int sum = 0;
+    for (int i = 0; i < displayAssetCount; i++) {
+      sum += allAssetTargetRatios[i];
+    }
     return max(0, 100 - sum);
   }
   
   void updateRatios() {
     setState(() {
-      int totalSelected = assetTargetRatios.fold(0, (sum, ratio) => sum + ratio);
+      // 현재 표시된 자산의 목표 비율만 고려
+      int totalSelected = 0;
+      for (int i = 0; i < displayAssetCount; i++) {
+        totalSelected += allAssetTargetRatios[i];
+      }
       
       // 드롭다운에 표시할 수 있는 값 제한
-      for (int i = 0; i < assetCount; i++) {
-        int currentValue = assetTargetRatios[i];
+      for (int i = 0; i < displayAssetCount; i++) {
+        int currentValue = allAssetTargetRatios[i];
         int otherTotal = totalSelected - currentValue;
         int maxPossible = 100 - otherTotal;
         
         if (currentValue > maxPossible) {
-          assetTargetRatios[i] = maxPossible;
+          allAssetTargetRatios[i] = maxPossible;
         }
       }
     });
@@ -369,15 +316,14 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
   
   void clearAssetName(int index) {
     setState(() {
-      assetNameControllers[index].clear();
-      assetNames[index] = '';
+      allAssetNameControllers[index].clear();
     });
     saveState();
   }
   
   void clearAssetValue(int index) {
     setState(() {
-      assetValueControllers[index].clear();
+      allAssetValueControllers[index].clear();
       updateTotalAmount();
     });
     saveState();
@@ -399,10 +345,11 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     
     bool hasInput = cashController.text.isNotEmpty;
     
-    for (int i = 0; i < assetCount; i++) {
-      String assetName = assetNameControllers[i].text.trim();
-      String assetValueText = assetValueControllers[i].text.replaceAll(',', '');
-      int assetRatio = assetTargetRatios[i];
+    // 현재 표시된 자산만 계산에 포함
+    for (int i = 0; i < displayAssetCount; i++) {
+      String assetName = allAssetNameControllers[i].text.trim();
+      String assetValueText = allAssetValueControllers[i].text.replaceAll(',', '');
+      int assetRatio = allAssetTargetRatios[i];
       
       if (assetName.isNotEmpty || assetValueText.isNotEmpty || assetRatio > 0) {
         hasInput = true;
@@ -505,21 +452,16 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     setState(() {
       cashController.clear();
       
-      // 기존 컨트롤러 해제
-      for (var controller in assetValueControllers) {
-        controller.dispose();
+      // 모든 자산 컨트롤러 초기화
+      for (var controller in allAssetNameControllers) {
+        controller.clear();
       }
-      for (var controller in assetNameControllers) {
-        controller.dispose();
+      for (var controller in allAssetValueControllers) {
+        controller.clear();
       }
       
-      // 새 컨트롤러 생성 (모두 빈 값으로)
-      assetNameControllers = List.generate(assetCount, (_) => TextEditingController());
-      assetValueControllers = List.generate(assetCount, (_) => TextEditingController());
-      
-      // 목표 비율 및 자산명 초기화
-      assetNames = List.filled(assetCount, '');
-      assetTargetRatios = List.filled(assetCount, 0);
+      // 목표 비율 초기화
+      allAssetTargetRatios = List.filled(maxAssetCount, 0);
       
       // 결과 초기화
       adjustmentResults = [];
@@ -582,7 +524,7 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                           const Text('자산 개수 선택:'),
                           const SizedBox(width: 8),
                           DropdownButton<int>(
-                            value: assetCount,
+                            value: displayAssetCount,
                             items: List.generate(5, (i) => i + 1)
                                 .map((i) => DropdownMenuItem<int>(
                                       value: i,
@@ -614,8 +556,8 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                   ),
                   
                   // 자산 목록
-                  ...List.generate(assetCount, (index) {
-                    double currentValue = double.tryParse(assetValueControllers[index].text.replaceAll(',', '')) ?? 0;
+                  ...List.generate(displayAssetCount, (index) {
+                    double currentValue = double.tryParse(allAssetValueControllers[index].text.replaceAll(',', '')) ?? 0;
                     double currentRatio = getCurrentRatio(currentValue);
                     
                     return Padding(
@@ -626,17 +568,19 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                           Flexible(
                             flex: isSmallScreen ? 100 : 125,
                             child: _buildClearableTextField(
-                              controller: assetNameControllers[index],
+                              controller: allAssetNameControllers[index],
                               onChanged: (value) {
                                 // 8글자 제한 적용
                                 if (value.length > 8) {
-                                  assetNameControllers[index].text = value.substring(0, 8);
-                                  assetNameControllers[index].selection = TextSelection.fromPosition(
+                                  allAssetNameControllers[index].text = value.substring(0, 8);
+                                  allAssetNameControllers[index].selection = TextSelection.fromPosition(
                                     TextPosition(offset: 8)
                                   );
                                 } else {
                                   setState(() {
-                                    assetNames[index] = value;
+                                    // 자산 이름 목록 업데이트
+                                    // 항상 5개의 자산을 유지하기 위해 추가된 부분
+                                    // 이 부분은 실제 구현에 따라 다를 수 있습니다.
                                   });
                                 }
                                 saveState();
@@ -652,8 +596,8 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                           Flexible(
                             flex: isSmallScreen ? 140 : 165,
                             child: _buildClearableTextField(
-                              controller: assetValueControllers[index],
-                              onChanged: (_) => formatNumberWithCommas(assetValueControllers[index]),
+                              controller: allAssetValueControllers[index],
+                              onChanged: (_) => formatNumberWithCommas(allAssetValueControllers[index]),
                               onClear: () => clearAssetValue(index),
                               keyboardType: TextInputType.number,
                             ),
@@ -678,7 +622,7 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                               ),
                               child: DropdownButtonHideUnderline(
                                 child: DropdownButton<int>(
-                                  value: assetTargetRatios[index],
+                                  value: allAssetTargetRatios[index],
                                   isExpanded: true,
                                   alignment: Alignment.center,
                                   style: const TextStyle(
@@ -696,7 +640,7 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                                   onChanged: (value) {
                                     if (value != null) {
                                       setState(() {
-                                        assetTargetRatios[index] = value;
+                                        allAssetTargetRatios[index] = value;
                                         updateRatios();
                                       });
                                     }
