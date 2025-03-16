@@ -123,6 +123,7 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
   
   int assetCount = 1;
   List<String> assetNames = [''];
+  List<TextEditingController> assetNameControllers = [TextEditingController()];
   List<TextEditingController> assetValueControllers = [TextEditingController()];
   List<int> assetTargetRatios = [0];
   
@@ -142,6 +143,9 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     for (var controller in assetValueControllers) {
       controller.dispose();
     }
+    for (var controller in assetNameControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
   
@@ -156,6 +160,20 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
         assetNames = assetNames.sublist(0, count);
       }
       
+      if (assetNameControllers.length < count) {
+        assetNameControllers.addAll(
+          List.generate(count - assetNameControllers.length, (_) {
+            final controller = TextEditingController();
+            return controller;
+          })
+        );
+      } else {
+        for (int i = count; i < assetNameControllers.length; i++) {
+          assetNameControllers[i].dispose();
+        }
+        assetNameControllers = assetNameControllers.sublist(0, count);
+      }
+      
       if (assetValueControllers.length < count) {
         assetValueControllers.addAll(
           List.generate(count - assetValueControllers.length, (_) => TextEditingController())
@@ -165,6 +183,13 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
           assetValueControllers[i].dispose();
         }
         assetValueControllers = assetValueControllers.sublist(0, count);
+      }
+      
+      // 각 컨트롤러의 텍스트 값 설정
+      for (int i = 0; i < count; i++) {
+        if (i < assetNames.length && assetNames[i].isNotEmpty) {
+          assetNameControllers[i].text = assetNames[i];
+        }
       }
       
       if (assetTargetRatios.length < count) {
@@ -232,7 +257,7 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     bool hasInput = cashController.text.isNotEmpty;
     
     for (int i = 0; i < assetCount; i++) {
-      String assetName = assetNames[i].trim();
+      String assetName = assetNameControllers[i].text.trim();
       String assetValueText = assetValueControllers[i].text.replaceAll(',', '');
       int assetRatio = assetTargetRatios[i];
       
@@ -314,6 +339,9 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     setState(() {
       cashController.clear();
       for (var controller in assetValueControllers) {
+        controller.clear();
+      }
+      for (var controller in assetNameControllers) {
         controller.clear();
       }
       assetNames = List.filled(assetCount, '');
@@ -398,6 +426,7 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                       Expanded(
                         flex: 3,
                         child: TextField(
+                          controller: assetNameControllers[index],
                           decoration: const InputDecoration(
                             contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                             isDense: true,
@@ -408,7 +437,6 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                               assetNames[index] = value;
                             });
                           },
-                          value: assetNames[index],
                         ),
                       ),
                       const SizedBox(width: 8),
