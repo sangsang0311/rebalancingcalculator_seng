@@ -4,6 +4,9 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,7 +24,7 @@ jobs:
         run: flutter pub get
         
       - name: Build
-        run: flutter build web --base-href "/rebalancingcalculator/"
+        run: flutter build web --base-href "/rebalancingcalculator_seng/"
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v3
