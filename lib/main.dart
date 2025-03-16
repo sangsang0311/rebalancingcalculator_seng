@@ -17,23 +17,27 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '리밸런싱 계산기',
+      title: '자산 리밸런싱',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        fontFamily: '-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif',
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF007BFF),
           primary: const Color(0xFF007BFF),
         ),
         useMaterial3: true,
-        scaffoldBackgroundColor: Colors.grey.shade50,
+        scaffoldBackgroundColor: const Color(0xFFF4F4F9),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             foregroundColor: Colors.white,
             backgroundColor: const Color(0xFF007BFF),
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            textStyle: const TextStyle(fontSize: 16),
           ),
         ),
       ),
-      home: const MyHomePage(title: '리밸런싱 계산기'),
+      home: const MyHomePage(title: '자산 리밸런싱'),
     );
   }
 }
@@ -79,9 +83,6 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size;
-    final isSmallScreen = size.width < 600;
-
     return Scaffold(
       // 앱바 완전 제거
       body: SafeArea(
@@ -418,21 +419,21 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
       if (currentValue > targetValue) {
         result = {
           'text': '$asset : ${formatCurrency(currentValue - targetValue)}원 만큼 파세요(매도)',
-          'color': const Color(0xFF0D6EFD),
+          'color': const Color(0xFF0D6EFD), // 파란색 (매도)
           'asset': asset
         };
         hasAdjustment = true;
       } else if (currentValue < targetValue) {
         result = {
           'text': '$asset : ${formatCurrency(targetValue - currentValue)}원 만큼 사세요(매수)',
-          'color': const Color(0xFFDC3545),
+          'color': const Color(0xFFDC3545), // 빨간색 (매수)
           'asset': asset
         };
         hasAdjustment = true;
       } else {
         result = {
           'text': '$asset: 리밸런싱 필요 없음',
-          'color': const Color(0xFF198754),
+          'color': const Color(0xFF198754), // 녹색
           'asset': asset
         };
       }
@@ -492,74 +493,76 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
   
   @override
   Widget build(BuildContext context) {
-    final size = MediaQuery.of(context).size; // 변수 복원
-    final isSmallScreen = size.width < 600; // 변수 복원
+    final size = MediaQuery.of(context).size;
+    final isSmallScreen = size.width < 600;
     
-    return Padding(
-      padding: const EdgeInsets.all(8.0),
-      child: SingleChildScrollView(
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
         child: Column(
           children: [
-            // 제목 추가
-            const Padding(
-              padding: EdgeInsets.only(top: 16.0, bottom: 16.0),
-              child: Text(
-                '리밸런싱 계산기',
-                style: TextStyle(
-                  fontSize: 24, 
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF007BFF),
-                ),
+            Container(
+              constraints: const BoxConstraints(maxWidth: 510),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1), 
+                    blurRadius: 8, 
+                    offset: const Offset(0, 4)
+                  ),
+                ],
               ),
-            ),
-            Center(
-              child: Container(
-                constraints: const BoxConstraints(maxWidth: 510),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1), 
-                      blurRadius: 8, 
-                      offset: const Offset(0, 4)
+              padding: EdgeInsets.all(isSmallScreen ? 10 : 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // 타이틀
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 16.0),
+                    child: Text(
+                      '리밸런싱 계산기',
+                      style: TextStyle(
+                        fontSize: 24, 
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
                     ),
-                  ],
-                ),
-                padding: EdgeInsets.all(isSmallScreen ? 10 : 20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // 자산 개수 선택
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 15.0),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Text('자산 개수 선택:'),
-                            const SizedBox(width: 8),
-                            DropdownButton<int>(
-                              value: assetCount,
-                              items: List.generate(5, (i) => i + 1)
-                                  .map((i) => DropdownMenuItem<int>(
-                                        value: i,
-                                        child: Text('$i'),
-                                      ))
-                                  .toList(),
-                              onChanged: (value) {
-                                if (value != null) {
-                                  updateAssetCount(value);
-                                }
-                              },
-                            ),
-                          ],
-                        ),
+                  ),
+                  
+                  // 자산 개수 선택
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 15.0),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('자산 개수 선택:'),
+                          const SizedBox(width: 8),
+                          DropdownButton<int>(
+                            value: assetCount,
+                            items: List.generate(5, (i) => i + 1)
+                                .map((i) => DropdownMenuItem<int>(
+                                      value: i,
+                                      child: Text('$i'),
+                                    ))
+                                .toList(),
+                            onChanged: (value) {
+                              if (value != null) {
+                                updateAssetCount(value);
+                              }
+                            },
+                          ),
+                        ],
                       ),
                     ),
-                    
-                    // 헤더
-                    Row(
+                  ),
+                  
+                  // 헤더 (자산 헤더)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10.0),
+                    child: Row(
                       children: [
                         _buildHeaderCell('자산명', flex: isSmallScreen ? 100 : 125),
                         _buildHeaderCell('평가 금액', flex: isSmallScreen ? 140 : 165),
@@ -567,104 +570,31 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                         _buildHeaderCell('목표 비중', flex: isSmallScreen ? 70 : 85),
                       ],
                     ),
+                  ),
+                  
+                  // 자산 목록
+                  ...List.generate(assetCount, (index) {
+                    double currentValue = double.tryParse(assetValueControllers[index].text.replaceAll(',', '')) ?? 0;
+                    double currentRatio = getCurrentRatio(currentValue);
                     
-                    // 자산 목록
-                    ...List.generate(assetCount, (index) {
-                      double currentValue = double.tryParse(assetValueControllers[index].text.replaceAll(',', '')) ?? 0;
-                      double currentRatio = getCurrentRatio(currentValue);
-                      
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 10.0),
-                        child: Row(
-                          children: [
-                            // 자산명
-                            Flexible(
-                              flex: isSmallScreen ? 100 : 125,
-                              child: _buildClearableTextField(
-                                controller: assetNameControllers[index],
-                                onChanged: (value) {
-                                  setState(() {
-                                    assetNames[index] = value;
-                                  });
-                                  saveState();
-                                },
-                                onClear: () => clearAssetName(index),
-                                keyboardType: TextInputType.text,
-                              ),
-                            ),
-                            const SizedBox(width: 5),
-                            
-                            // 평가 금액
-                            Flexible(
-                              flex: isSmallScreen ? 140 : 165,
-                              child: _buildClearableTextField(
-                                controller: assetValueControllers[index],
-                                onChanged: (_) => formatNumberWithCommas(assetValueControllers[index]),
-                                onClear: () => clearAssetValue(index),
-                                keyboardType: TextInputType.number,
-                              ),
-                            ),
-                            const SizedBox(width: 5),
-                            
-                            // 현재 비중
-                            Flexible(
-                              flex: isSmallScreen ? 70 : 85,
-                              child: _buildDisabledTextField('${currentRatio.toStringAsFixed(1)}%'),
-                            ),
-                            const SizedBox(width: 5),
-                            
-                            // 목표 비중
-                            Flexible(
-                              flex: isSmallScreen ? 70 : 85,
-                              child: Container(
-                                height: 30,
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey.shade400),
-                                  borderRadius: BorderRadius.circular(5),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<int>(
-                                    value: assetTargetRatios[index],
-                                    isExpanded: true,
-                                    alignment: Alignment.center,
-                                    style: const TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.black,
-                                    ),
-                                    icon: const Icon(Icons.arrow_drop_down, size: 16),
-                                    items: List.generate(101, (i) => i)
-                                        .map((i) => DropdownMenuItem<int>(
-                                              value: i,
-                                              alignment: Alignment.center,
-                                              child: Text('$i%'),
-                                            ))
-                                        .toList(),
-                                    onChanged: (value) {
-                                      if (value != null) {
-                                        setState(() {
-                                          assetTargetRatios[index] = value;
-                                          updateRatios();
-                                        });
-                                      }
-                                    },
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                    
-                    // 현금 입력 행
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10.0),
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10.0),
                       child: Row(
                         children: [
                           // 자산명
                           Flexible(
                             flex: isSmallScreen ? 100 : 125,
-                            child: _buildDisabledTextField('보유 KRW'),
+                            child: _buildClearableTextField(
+                              controller: assetNameControllers[index],
+                              onChanged: (value) {
+                                setState(() {
+                                  assetNames[index] = value;
+                                });
+                                saveState();
+                              },
+                              onClear: () => clearAssetName(index),
+                              keyboardType: TextInputType.text,
+                            ),
                           ),
                           const SizedBox(width: 5),
                           
@@ -672,9 +602,9 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                           Flexible(
                             flex: isSmallScreen ? 140 : 165,
                             child: _buildClearableTextField(
-                              controller: cashController,
-                              onChanged: (_) => formatNumberWithCommas(cashController),
-                              onClear: clearCashValue,
+                              controller: assetValueControllers[index],
+                              onChanged: (_) => formatNumberWithCommas(assetValueControllers[index]),
+                              onClear: () => clearAssetValue(index),
                               keyboardType: TextInputType.number,
                             ),
                           ),
@@ -683,140 +613,227 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                           // 현재 비중
                           Flexible(
                             flex: isSmallScreen ? 70 : 85,
-                            child: _buildDisabledTextField(
-                              '${getCurrentRatio(double.tryParse(cashController.text.replaceAll(',', '')) ?? 0).toStringAsFixed(1)}%'
-                            ),
+                            child: _buildDisabledTextField('${currentRatio.toStringAsFixed(1)}%'),
                           ),
                           const SizedBox(width: 5),
                           
                           // 목표 비중
                           Flexible(
                             flex: isSmallScreen ? 70 : 85,
-                            child: _buildDisabledTextField('${getCashTargetRatio()}%'),
+                            child: Container(
+                              height: 30,
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey.shade400),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<int>(
+                                  value: assetTargetRatios[index],
+                                  isExpanded: true,
+                                  alignment: Alignment.center,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.black,
+                                  ),
+                                  icon: const Icon(Icons.arrow_drop_down, size: 16),
+                                  items: List.generate(101, (i) => i)
+                                      .map((i) => DropdownMenuItem<int>(
+                                            value: i,
+                                            alignment: Alignment.center,
+                                            child: Text('$i%'),
+                                          ))
+                                      .toList(),
+                                  onChanged: (value) {
+                                    if (value != null) {
+                                      setState(() {
+                                        assetTargetRatios[index] = value;
+                                        updateRatios();
+                                      });
+                                    }
+                                  },
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                    
-                    // 총 금액
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 10.0),
-                      child: Text(
-                        '총 금액 : ${formatCurrency(totalAmount)} 원',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                    
-                    // 버튼들
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: resetAll,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6c757d),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                          elevation: 0,
+                    );
+                  }),
+                  
+                  // 현금 입력 행
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10.0),
+                    child: Row(
+                      children: [
+                        // 자산명
+                        Flexible(
+                          flex: isSmallScreen ? 100 : 125,
+                          child: _buildDisabledTextField('보유 KRW'),
                         ),
-                        child: const Text('초기화', style: TextStyle(fontSize: 16)),
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 10),
-                    
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: calculateRebalancing,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF007BFF),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(5),
+                        const SizedBox(width: 5),
+                        
+                        // 평가 금액
+                        Flexible(
+                          flex: isSmallScreen ? 140 : 165,
+                          child: _buildClearableTextField(
+                            controller: cashController,
+                            onChanged: (_) => formatNumberWithCommas(cashController),
+                            onClear: clearCashValue,
+                            keyboardType: TextInputType.number,
                           ),
-                          elevation: 0,
                         ),
-                        child: const Text('계산', style: TextStyle(fontSize: 16)),
+                        const SizedBox(width: 5),
+                        
+                        // 현재 비중
+                        Flexible(
+                          flex: isSmallScreen ? 70 : 85,
+                          child: _buildDisabledTextField(
+                            '${getCurrentRatio(double.tryParse(cashController.text.replaceAll(',', '')) ?? 0).toStringAsFixed(1)}%'
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        
+                        // 목표 비중
+                        Flexible(
+                          flex: isSmallScreen ? 70 : 85,
+                          child: _buildDisabledTextField('${getCashTargetRatio()}%'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  // 총 금액 표시
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 10.0),
+                    child: RichText(
+                      text: TextSpan(
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        children: [
+                          const TextSpan(text: '총 금액 : '),
+                          TextSpan(text: '${formatCurrency(totalAmount)} 원'),
+                        ],
                       ),
                     ),
-                    
-                    // 결과 표시 영역
-                    if (showResults) ...[
-                      const SizedBox(height: 20),
-                      
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade50,
+                  ),
+                  
+                  // 초기화 버튼
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: resetAll,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6c757d),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(5),
-                          border: Border.all(color: Colors.grey.shade300),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (adjustmentResults.isEmpty)
-                              Center(
-                                child: Text(
-                                  '리밸런싱이 필요하지 않습니다.',
-                                  style: TextStyle(
-                                    color: Colors.green[700],
-                                    fontWeight: FontWeight.bold
-                                  ),
-                                ),
-                              )
-                            else
-                              ...adjustmentResults.map((result) => Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 2.0),
-                                child: Text(
-                                  result['text'],
-                                  style: TextStyle(
-                                    color: result['color'],
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              )).toList(),
-                            
-                            if (finalResults.isNotEmpty) ...[
-                              Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 10.0),
-                                child: Divider(color: Colors.grey.shade300, height: 1),
-                              ),
-                              
-                              Center(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(bottom: 8.0),
-                                  child: Text(
-                                    '리밸런싱 후 현황',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 17,
-                                      color: Colors.grey[800],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              
-                              ...finalResults.entries.map((entry) => Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 2.0),
-                                child: Text(
-                                  '${entry.key} : ${formatCurrency(entry.value['value'])}원 (${entry.value['ratio']}%)',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.normal,
-                                  ),
-                                ),
-                              )).toList(),
-                            ],
-                          ],
-                        ),
+                        elevation: 0,
                       ),
-                    ],
+                      child: const Text('초기화', style: TextStyle(fontSize: 16)),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 10),
+                  
+                  // 계산 버튼
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: calculateRebalancing,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF007BFF),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text('계산', style: TextStyle(fontSize: 16)),
+                    ),
+                  ),
+                  
+                  // 결과 표시 영역
+                  if (showResults) ...[
+                    const SizedBox(height: 20),
+                    
+                    // 결과 표시
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8F9FA),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (adjustmentResults.isEmpty)
+                            const Center(
+                              child: Text(
+                                '리밸런싱이 필요하지 않습니다.',
+                                style: TextStyle(
+                                  color: Color(0xFF198754),
+                                  fontWeight: FontWeight.bold
+                                ),
+                              ),
+                            )
+                          else
+                            ...adjustmentResults.map((result) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2.0),
+                              child: Text(
+                                result['text'],
+                                style: TextStyle(
+                                  color: result['color'],
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            )).toList(),
+                          
+                          if (finalResults.isNotEmpty) ...[
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 10.0),
+                              child: Divider(color: Colors.grey.shade300, height: 1),
+                            ),
+                            
+                            // 리밸런싱 후 현황 제목
+                            const Align(
+                              alignment: Alignment.center,
+                              child: Padding(
+                                padding: EdgeInsets.only(bottom: 8.0),
+                                child: Text(
+                                  '리밸런싱 후 현황',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 17,
+                                    color: Colors.black,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            
+                            // 리밸런싱 후 각 자산 현황
+                            ...finalResults.entries.map((entry) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2.0),
+                              child: Text(
+                                '${entry.key} : ${formatCurrency(entry.value['value'])}원 (${entry.value['ratio']}%)',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.normal,
+                                  color: Colors.black,
+                                ),
+                              ),
+                            )).toList(),
+                          ],
+                        ],
+                      ),
+                    ),
                   ],
-                ),
+                ],
               ),
             ),
           ],
@@ -895,7 +912,7 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
       decoration: BoxDecoration(
         border: Border.all(color: Colors.grey.shade400),
         borderRadius: BorderRadius.circular(5),
-        color: Colors.grey.shade100,
+        color: const Color(0xFFF8F9FA),
       ),
       child: Text(
         text,
