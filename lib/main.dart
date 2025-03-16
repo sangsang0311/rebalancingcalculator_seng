@@ -83,27 +83,28 @@ class _MyHomePageState extends State<MyHomePage> {
     final isSmallScreen = size.width < 600;
 
     return Scaffold(
-      appBar: isWebViewEnabled ? AppBar(
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        title: Text(
-          widget.title,
-          style: TextStyle(fontSize: isSmallScreen ? 18 : 24),
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.flutter_dash),
-            onPressed: () {
-              setState(() {
-                isWebViewEnabled = false;
-              });
-            },
-            tooltip: 'Flutter UI로 전환',
-          )
-        ],
-      ) : null,
+      // 앱바 완전 제거
       body: SafeArea(
         child: isWebViewEnabled
-            ? WebViewWidget(controller: controller!)
+            ? Stack(
+                children: [
+                  WebViewWidget(controller: controller!),
+                  // WebView에서 Flutter UI로 전환하는 작은 플로팅 버튼
+                  Positioned(
+                    bottom: 20,
+                    right: 20,
+                    child: FloatingActionButton.small(
+                      onPressed: () {
+                        setState(() {
+                          isWebViewEnabled = false;
+                        });
+                      },
+                      child: const Icon(Icons.flutter_dash, size: 20),
+                      tooltip: 'Flutter UI로 전환',
+                    ),
+                  ),
+                ],
+              )
             : const RebalancingCalculator(),
       ),
     );
@@ -154,12 +155,18 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
   Future<void> saveState() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      
+      // 모든 자산명, 값, 비율 수집 (현재 설정된 개수에 상관없이)
+      final allAssetNames = assetNameControllers.map((c) => c.text).toList();
+      final allAssetValues = assetValueControllers.map((c) => c.text).toList();
+      final allAssetRatios = assetTargetRatios;
+      
       final state = {
         'cash_value': cashController.text,
         'asset_count': assetCount,
-        'asset_names': assetNames,
-        'asset_values': assetValueControllers.map((c) => c.text).toList(),
-        'asset_ratios': assetTargetRatios,
+        'asset_names': allAssetNames,
+        'asset_values': allAssetValues,
+        'asset_ratios': allAssetRatios,
       };
       await prefs.setString('rebalancing_state', jsonEncode(state));
     } catch (e) {
@@ -224,42 +231,36 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
   
   void updateAssetCount(int count) {
     setState(() {
+      // 기존 값 임시 저장
+      List<String> tempNames = List.from(assetNames);
+      List<String> tempValues = assetValueControllers.map((c) => c.text).toList();
+      List<int> tempRatios = List.from(assetTargetRatios);
+      
+      // 컨트롤러 정리
+      for (var controller in assetNameControllers) {
+        controller.dispose();
+      }
+      for (var controller in assetValueControllers) {
+        controller.dispose();
+      }
+      
+      // 새 값 설정
       assetCount = count;
       
-      // 리스트 크기 조정
-      if (assetNames.length < count) {
-        assetNames.addAll(List.filled(count - assetNames.length, ''));
-      } else {
-        assetNames = assetNames.sublist(0, count);
-      }
+      // 리스트 크기 조정하면서 기존 값 유지
+      assetNames = List.generate(count, (i) => i < tempNames.length ? tempNames[i] : '');
       
-      if (assetNameControllers.length < count) {
-        assetNameControllers.addAll(
-          List.generate(count - assetNameControllers.length, (_) => TextEditingController())
-        );
-      } else {
-        for (int i = count; i < assetNameControllers.length; i++) {
-          assetNameControllers[i].dispose();
-        }
-        assetNameControllers = assetNameControllers.sublist(0, count);
-      }
+      assetNameControllers = List.generate(count, 
+        (i) => TextEditingController(text: i < tempNames.length ? tempNames[i] : '')
+      );
       
-      if (assetValueControllers.length < count) {
-        assetValueControllers.addAll(
-          List.generate(count - assetValueControllers.length, (_) => TextEditingController())
-        );
-      } else {
-        for (int i = count; i < assetValueControllers.length; i++) {
-          assetValueControllers[i].dispose();
-        }
-        assetValueControllers = assetValueControllers.sublist(0, count);
-      }
+      assetValueControllers = List.generate(count, 
+        (i) => TextEditingController(text: i < tempValues.length ? tempValues[i] : '')
+      );
       
-      if (assetTargetRatios.length < count) {
-        assetTargetRatios.addAll(List.filled(count - assetTargetRatios.length, 0));
-      } else {
-        assetTargetRatios = assetTargetRatios.sublist(0, count);
-      }
+      assetTargetRatios = List.generate(count, 
+        (i) => i < tempRatios.length ? tempRatios[i] : 0
+      );
       
       updateTotalAmount();
       saveState();
@@ -491,7 +492,8 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
   
   @override
   Widget build(BuildContext context) {
-    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+    final size = MediaQuery.of(context).size; // 변수 복원
+    final isSmallScreen = size.width < 600; // 변수 복원
     
     return Padding(
       padding: const EdgeInsets.all(8.0),
@@ -588,7 +590,6 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                                 },
                                 onClear: () => clearAssetName(index),
                                 keyboardType: TextInputType.text,
-                                maxLength: 8,
                               ),
                             ),
                             const SizedBox(width: 5),
@@ -847,7 +848,6 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     required Function(String) onChanged,
     required Function() onClear,
     TextInputType keyboardType = TextInputType.text,
-    int? maxLength,
   }) {
     return Container(
       height: 30,
@@ -869,7 +869,6 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
             ),
             keyboardType: keyboardType,
             onChanged: onChanged,
-            maxLength: maxLength,
             buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
           ),
           Material(
