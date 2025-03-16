@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:webview_flutter/webview_flutter.dart';
-// dart:html은 조건부로 가져옵니다.
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html if (dart.library.io) 'dart:io' as html;
 
 void main() {
-  // 무한 리디렉션 루프를 방지하기 위해 웹에서도 Flutter UI를 실행합니다.
+  // Flutter UI를 정상적으로 실행합니다.
   runApp(const MyApp());
 }
 
