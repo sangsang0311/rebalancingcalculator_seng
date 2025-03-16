@@ -39,7 +39,7 @@ jobs:
         run: flutter pub get
         
       - name: Show directory structure
-        run: find . -type f -name "*.html" | sort
+        run: find . -type f -not -path "*/\.*" | grep -v "build/" | sort
 
       - name: Build web
         run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
