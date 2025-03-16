@@ -162,12 +162,16 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
       final allAssetValues = assetValueControllers.map((c) => c.text).toList();
       final allAssetRatios = assetTargetRatios;
       
+      // 여기서 모든 자산의 정보를 저장 (현재 화면에 표시된 자산 개수와 관계없이)
       final state = {
         'cash_value': cashController.text,
         'asset_count': assetCount,
-        'asset_names': allAssetNames,
-        'asset_values': allAssetValues,
-        'asset_ratios': allAssetRatios,
+        'all_asset_names': allAssetNames, // 모든 자산명 (최대 5개까지)
+        'all_asset_values': allAssetValues, // 모든 자산 값 (최대 5개까지)
+        'all_asset_ratios': allAssetRatios, // 모든 자산 비율 (최대 5개까지)
+        'asset_names': assetNames.sublist(0, min(assetCount, assetNames.length)),
+        'asset_values': assetValueControllers.map((c) => c.text).toList().sublist(0, min(assetCount, assetValueControllers.length)),
+        'asset_ratios': assetTargetRatios.sublist(0, min(assetCount, assetTargetRatios.length)),
       };
       await prefs.setString('rebalancing_state', jsonEncode(state));
     } catch (e) {
@@ -186,7 +190,20 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
           cashController.text = state['cash_value'] ?? '';
           assetCount = state['asset_count'] ?? 1;
           
-          // 리스트 데이터 로드
+          // 이전에 모든 자산 정보가 저장되어 있으면 그것을 사용
+          final allAssetNames = state.containsKey('all_asset_names') ? 
+            List<String>.from(state['all_asset_names'] ?? []) : 
+            List<String>.from(state['asset_names'] ?? []);
+            
+          final allAssetValues = state.containsKey('all_asset_values') ? 
+            List<String>.from(state['all_asset_values'] ?? []) : 
+            List<String>.from(state['asset_values'] ?? []);
+            
+          final allAssetRatios = state.containsKey('all_asset_ratios') ? 
+            List<int>.from(state['all_asset_ratios'] ?? []) : 
+            List<int>.from(state['asset_ratios'] ?? []);
+          
+          // 리스트 데이터 로드 (이전에 저장된 값들을 활용)
           final loadedNames = List<String>.from(state['asset_names'] ?? []);
           final loadedValues = List<String>.from(state['asset_values'] ?? []);
           final loadedRatios = List<int>.from(state['asset_ratios'] ?? []);
@@ -202,17 +219,20 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
             controller.dispose();
           }
           
+          // 여기서 현재 화면에 표시할 자산 개수만큼만 컨트롤러 생성
           assetNameControllers = List.generate(
             assetCount, 
             (i) => TextEditingController(
-              text: i < loadedNames.length ? loadedNames[i] : ''
+              text: i < loadedNames.length ? loadedNames[i] : 
+                   (i < allAssetNames.length ? allAssetNames[i] : '')
             )
           );
           
           assetValueControllers = List.generate(
             assetCount, 
             (i) => TextEditingController(
-              text: i < loadedValues.length ? loadedValues[i] : ''
+              text: i < loadedValues.length ? loadedValues[i] : 
+                   (i < allAssetValues.length ? allAssetValues[i] : '')
             )
           );
           
@@ -221,6 +241,15 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
             (loadedRatios.length >= assetCount ? 
               loadedRatios.sublist(0, assetCount) : 
               [...loadedRatios, ...List.filled(assetCount - loadedRatios.length, 0)]);
+              
+              // 이전에 저장된 모든 비율 정보 복원
+              for (int i = 0; i < assetCount; i++) {
+                if (i < loadedRatios.length) {
+                  assetTargetRatios[i] = loadedRatios[i];
+                } else if (i < allAssetRatios.length) {
+                  assetTargetRatios[i] = allAssetRatios[i];
+                }
+              }
         });
         
         updateTotalAmount();
@@ -232,10 +261,19 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
   
   void updateAssetCount(int count) {
     setState(() {
-      // 기존 값 임시 저장
-      List<String> tempNames = List.from(assetNames);
-      List<String> tempValues = assetValueControllers.map((c) => c.text).toList();
-      List<int> tempRatios = List.from(assetTargetRatios);
+      // 기존 값 임시 저장하여 모든 자산 정보를 보존
+      List<String> allAssetNames = List.filled(5, '');
+      List<String> allAssetValues = List.filled(5, '');
+      List<int> allAssetRatios = List.filled(5, 0);
+      
+      // 현재 값 저장
+      for (int i = 0; i < assetNameControllers.length; i++) {
+        if (i < 5) {
+          allAssetNames[i] = assetNameControllers[i].text;
+          allAssetValues[i] = assetValueControllers[i].text;
+          allAssetRatios[i] = assetTargetRatios[i];
+        }
+      }
       
       // 컨트롤러 정리
       for (var controller in assetNameControllers) {
@@ -249,18 +287,18 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
       assetCount = count;
       
       // 리스트 크기 조정하면서 기존 값 유지
-      assetNames = List.generate(count, (i) => i < tempNames.length ? tempNames[i] : '');
+      assetNames = List.generate(count, (i) => i < allAssetNames.length ? allAssetNames[i] : '');
       
       assetNameControllers = List.generate(count, 
-        (i) => TextEditingController(text: i < tempNames.length ? tempNames[i] : '')
+        (i) => TextEditingController(text: i < allAssetNames.length ? allAssetNames[i] : '')
       );
       
       assetValueControllers = List.generate(count, 
-        (i) => TextEditingController(text: i < tempValues.length ? tempValues[i] : '')
+        (i) => TextEditingController(text: i < allAssetValues.length ? allAssetValues[i] : '')
       );
       
       assetTargetRatios = List.generate(count, 
-        (i) => i < tempRatios.length ? tempRatios[i] : 0
+        (i) => i < allAssetRatios.length ? allAssetRatios[i] : 0
       );
       
       updateTotalAmount();
@@ -587,13 +625,22 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
                             child: _buildClearableTextField(
                               controller: assetNameControllers[index],
                               onChanged: (value) {
-                                setState(() {
-                                  assetNames[index] = value;
-                                });
+                                // 8글자 제한 적용
+                                if (value.length > 8) {
+                                  assetNameControllers[index].text = value.substring(0, 8);
+                                  assetNameControllers[index].selection = TextSelection.fromPosition(
+                                    TextPosition(offset: 8)
+                                  );
+                                } else {
+                                  setState(() {
+                                    assetNames[index] = value;
+                                  });
+                                }
                                 saveState();
                               },
                               onClear: () => clearAssetName(index),
                               keyboardType: TextInputType.text,
+                              maxLength: 8, // 8글자 제한 추가
                             ),
                           ),
                           const SizedBox(width: 5),
@@ -865,6 +912,7 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     required Function(String) onChanged,
     required Function() onClear,
     TextInputType keyboardType = TextInputType.text,
+    int? maxLength,
   }) {
     return Container(
       height: 30,
@@ -886,6 +934,7 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
             ),
             keyboardType: keyboardType,
             onChanged: onChanged,
+            maxLength: maxLength,
             buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
           ),
           Material(
