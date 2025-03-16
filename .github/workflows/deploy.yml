@@ -29,14 +29,18 @@ jobs:
       - name: Build
         run: flutter build web --base-href "/rebalancingcalculator_seng/"
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
+      - name: Create .nojekyll file
+        run: touch ./build/web/.nojekyll
 
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: './build/web'
+      - name: Copy to docs folder
+        run: |
+          rm -rf docs
+          cp -r build/web docs
 
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4 
+      - name: Commit and push changes
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git add docs
+          git commit -m "Update docs folder"
+          git push 
