@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:intl/intl.dart';
 import 'dart:math';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 void main() {
   // Flutter UI를 정상적으로 실행합니다.
@@ -128,13 +130,14 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
   List<int> assetTargetRatios = [0];
   
   double totalAmount = 0;
-  String adjustmentText = '';
+  List<Map<String, dynamic>> adjustmentResults = [];
+  Map<String, Map<String, dynamic>> finalResults = {};
   bool showResults = false;
   
   @override
   void initState() {
     super.initState();
-    updateTotalAmount();
+    loadState();
   }
   
   @override
@@ -147,6 +150,78 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
       controller.dispose();
     }
     super.dispose();
+  }
+  
+  // 앱 상태 저장
+  Future<void> saveState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final state = {
+        'cash_value': cashController.text,
+        'asset_count': assetCount,
+        'asset_names': assetNames,
+        'asset_values': assetValueControllers.map((c) => c.text).toList(),
+        'asset_ratios': assetTargetRatios,
+      };
+      await prefs.setString('rebalancing_state', jsonEncode(state));
+    } catch (e) {
+      debugPrint('상태 저장 오류: $e');
+    }
+  }
+  
+  // 앱 상태 로드
+  Future<void> loadState() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final stateJson = prefs.getString('rebalancing_state');
+      if (stateJson != null) {
+        final state = jsonDecode(stateJson);
+        setState(() {
+          cashController.text = state['cash_value'] ?? '';
+          assetCount = state['asset_count'] ?? 1;
+          
+          // 리스트 데이터 로드
+          final loadedNames = List<String>.from(state['asset_names'] ?? []);
+          final loadedValues = List<String>.from(state['asset_values'] ?? []);
+          final loadedRatios = List<int>.from(state['asset_ratios'] ?? []);
+          
+          // 데이터 적용
+          assetNames = loadedNames.isEmpty ? List.filled(assetCount, '') : loadedNames;
+          
+          // 컨트롤러 재설정
+          for (var controller in assetNameControllers) {
+            controller.dispose();
+          }
+          for (var controller in assetValueControllers) {
+            controller.dispose();
+          }
+          
+          assetNameControllers = List.generate(
+            assetCount, 
+            (i) => TextEditingController(
+              text: i < loadedNames.length ? loadedNames[i] : ''
+            )
+          );
+          
+          assetValueControllers = List.generate(
+            assetCount, 
+            (i) => TextEditingController(
+              text: i < loadedValues.length ? loadedValues[i] : ''
+            )
+          );
+          
+          assetTargetRatios = loadedRatios.isEmpty ? 
+            List.filled(assetCount, 0) : 
+            (loadedRatios.length >= assetCount ? 
+              loadedRatios.sublist(0, assetCount) : 
+              [...loadedRatios, ...List.filled(assetCount - loadedRatios.length, 0)]);
+        });
+        
+        updateTotalAmount();
+      }
+    } catch (e) {
+      debugPrint('상태 로드 오류: $e');
+    }
   }
   
   void updateAssetCount(int count) {
@@ -162,10 +237,7 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
       
       if (assetNameControllers.length < count) {
         assetNameControllers.addAll(
-          List.generate(count - assetNameControllers.length, (_) {
-            final controller = TextEditingController();
-            return controller;
-          })
+          List.generate(count - assetNameControllers.length, (_) => TextEditingController())
         );
       } else {
         for (int i = count; i < assetNameControllers.length; i++) {
@@ -185,13 +257,6 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
         assetValueControllers = assetValueControllers.sublist(0, count);
       }
       
-      // 각 컨트롤러의 텍스트 값 설정
-      for (int i = 0; i < count; i++) {
-        if (i < assetNames.length && assetNames[i].isNotEmpty) {
-          assetNameControllers[i].text = assetNames[i];
-        }
-      }
-      
       if (assetTargetRatios.length < count) {
         assetTargetRatios.addAll(List.filled(count - assetTargetRatios.length, 0));
       } else {
@@ -199,6 +264,7 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
       }
       
       updateTotalAmount();
+      saveState();
     });
   }
   
@@ -212,6 +278,7 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     
     setState(() {
       totalAmount = cash + assetsSum;
+      showResults = false;
     });
   }
   
@@ -223,12 +290,16 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     String value = controller.text.replaceAll(',', '');
     double? number = double.tryParse(value);
     if (number != null) {
+      if (number > 999999999999) {
+        number = 999999999999;
+      }
       controller.text = formatCurrency(number);
       controller.selection = TextSelection.fromPosition(
         TextPosition(offset: controller.text.length)
       );
     }
     updateTotalAmount();
+    saveState();
   }
   
   double getCurrentRatio(double value) {
@@ -241,10 +312,53 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     return max(0, 100 - sum);
   }
   
+  void updateRatios() {
+    setState(() {
+      int totalSelected = assetTargetRatios.fold(0, (sum, ratio) => sum + ratio);
+      
+      // 드롭다운에 표시할 수 있는 값 제한
+      for (int i = 0; i < assetCount; i++) {
+        int currentValue = assetTargetRatios[i];
+        int otherTotal = totalSelected - currentValue;
+        int maxPossible = 100 - otherTotal;
+        
+        if (currentValue > maxPossible) {
+          assetTargetRatios[i] = maxPossible;
+        }
+      }
+    });
+    saveState();
+  }
+  
+  void clearCashValue() {
+    setState(() {
+      cashController.clear();
+      updateTotalAmount();
+    });
+    saveState();
+  }
+  
+  void clearAssetName(int index) {
+    setState(() {
+      assetNameControllers[index].clear();
+      assetNames[index] = '';
+    });
+    saveState();
+  }
+  
+  void clearAssetValue(int index) {
+    setState(() {
+      assetValueControllers[index].clear();
+      updateTotalAmount();
+    });
+    saveState();
+  }
+  
   void calculateRebalancing() {
     if (totalAmount <= 0) {
       setState(() {
-        adjustmentText = '총 금액이 0원 이상이어야 합니다.';
+        adjustmentResults = [];
+        finalResults = {};
         showResults = true;
       });
       return;
@@ -275,9 +389,14 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
       targetAllocations[name] = assetRatio;
     }
     
+    List<Map<String, dynamic>> results = [];
+    Map<String, Map<String, dynamic>> finals = {};
+    bool hasAdjustment = false;
+    
     if (!hasInput) {
       setState(() {
-        adjustmentText = '리밸런싱이 필요하지 않습니다.';
+        adjustmentResults = [];
+        finalResults = {};
         showResults = true;
       });
       return;
@@ -285,52 +404,70 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     
     if (totalSelectedRatio > 100) {
       setState(() {
-        adjustmentText = '총 비중이 100%를 초과할 수 없습니다.';
+        adjustmentResults = [{'text': '총 비중이 100%를 초과할 수 없습니다.', 'color': Colors.red}];
+        finalResults = {};
         showResults = true;
       });
       return;
     }
-    
-    StringBuffer buffer = StringBuffer();
-    bool hasAdjustment = false;
     
     targetAllocations.forEach((asset, targetRatio) {
       final targetValue = (totalAmount * targetRatio) / 100;
       final currentValue = currentAllocations[asset] ?? 0;
+      Map<String, dynamic> result = {};
       
       if (currentValue > targetValue) {
-        buffer.writeln('$asset: ${formatCurrency(currentValue - targetValue)}원 만큼 파세요(매도)');
+        result = {
+          'text': '$asset : ${formatCurrency(currentValue - targetValue)}원 만큼 파세요(매도)',
+          'color': Colors.blue,
+          'asset': asset
+        };
         hasAdjustment = true;
       } else if (currentValue < targetValue) {
-        buffer.writeln('$asset: ${formatCurrency(targetValue - currentValue)}원 만큼 사세요(매수)');
+        result = {
+          'text': '$asset : ${formatCurrency(targetValue - currentValue)}원 만큼 사세요(매수)',
+          'color': Colors.red,
+          'asset': asset
+        };
         hasAdjustment = true;
       } else {
-        buffer.writeln('$asset: 리밸런싱 필요 없음');
+        result = {
+          'text': '$asset: 리밸런싱 필요 없음',
+          'color': Colors.green,
+          'asset': asset
+        };
       }
+      
+      results.add(result);
+      
+      // 리밸런싱 후 현황 계산
+      final finalAssetValue = (totalAmount * targetRatio) / 100;
+      finals[asset] = {
+        'value': finalAssetValue,
+        'ratio': targetRatio
+      };
     });
     
     if (!hasAdjustment) {
       setState(() {
-        adjustmentText = '리밸런싱이 필요하지 않습니다.';
+        adjustmentResults = [{'text': '리밸런싱이 필요하지 않습니다.', 'color': Colors.green}];
+        finalResults = {};
         showResults = true;
       });
       return;
     }
     
-    buffer.writeln('\n리밸런싱 후 현황');
-    buffer.writeln('-------------------');
-    
-    targetAllocations.forEach((asset, targetRatio) {
-      final finalAssetValue = (totalAmount * targetRatio) / 100;
-      buffer.writeln('$asset: ${formatCurrency(finalAssetValue)}원 ($targetRatio%)');
-    });
-    
+    // 현금 최종 결과 추가
     final cashRatio = 100 - totalSelectedRatio;
     final finalCash = (totalAmount * cashRatio) / 100;
-    buffer.writeln('보유 KRW: ${formatCurrency(finalCash)}원 ($cashRatio%)');
+    finals['보유 KRW'] = {
+      'value': finalCash,
+      'ratio': cashRatio
+    };
     
     setState(() {
-      adjustmentText = buffer.toString();
+      adjustmentResults = results;
+      finalResults = finals;
       showResults = true;
     });
   }
@@ -346,296 +483,400 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
       }
       assetNames = List.filled(assetCount, '');
       assetTargetRatios = List.filled(assetCount, 0);
-      adjustmentText = '';
+      adjustmentResults = [];
+      finalResults = {};
       showResults = false;
       updateTotalAmount();
     });
+    saveState();
   }
   
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 자산 개수 선택
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text('자산 개수 선택:'),
-                const SizedBox(width: 10),
-                DropdownButton<int>(
-                  value: assetCount,
-                  items: List.generate(5, (i) => i + 1)
-                      .map((i) => DropdownMenuItem<int>(
-                            value: i,
-                            child: Text('$i'),
-                          ))
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      updateAssetCount(value);
-                    }
-                  },
+    final isSmallScreen = MediaQuery.of(context).size.width < 600;
+    
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: SingleChildScrollView(
+        child: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 510),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1), 
+                  blurRadius: 8, 
+                  offset: const Offset(0, 4)
                 ),
               ],
             ),
-            
-            const SizedBox(height: 16),
-            
-            // 헤더
-            Row(
+            padding: EdgeInsets.all(isSmallScreen ? 10 : 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Expanded(flex: 3, child: Text('자산명', style: Theme.of(context).textTheme.titleSmall)),
-                Expanded(flex: 3, child: Text('평가 금액', style: Theme.of(context).textTheme.titleSmall)),
-                Expanded(flex: 2, child: Text('현재 비중', style: Theme.of(context).textTheme.titleSmall)),
-                Expanded(flex: 2, child: Text('목표 비중', style: Theme.of(context).textTheme.titleSmall)),
-              ],
-            ),
-            
-            const Divider(),
-            
-            // 자산 목록
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: assetCount,
-              itemBuilder: (context, index) {
-                double currentValue = double.tryParse(assetValueControllers[index].text.replaceAll(',', '')) ?? 0;
-                double currentRatio = getCurrentRatio(currentValue);
-                
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4.0),
-                  child: Row(
-                    children: [
-                      // 자산명
-                      Expanded(
-                        flex: 3,
-                        child: TextField(
-                          controller: assetNameControllers[index],
-                          decoration: const InputDecoration(
-                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                            isDense: true,
-                            border: OutlineInputBorder(),
-                          ),
-                          onChanged: (value) {
-                            setState(() {
-                              assetNames[index] = value;
-                            });
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      
-                      // 평가 금액
-                      Expanded(
-                        flex: 3,
-                        child: TextField(
-                          controller: assetValueControllers[index],
-                          decoration: const InputDecoration(
-                            contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                            isDense: true,
-                            border: OutlineInputBorder(),
-                          ),
-                          keyboardType: TextInputType.number,
-                          onChanged: (_) => formatNumberWithCommas(assetValueControllers[index]),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      
-                      // 현재 비중
-                      Expanded(
-                        flex: 2,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey.shade400),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            '${currentRatio.toStringAsFixed(1)}%',
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      
-                      // 목표 비중
-                      Expanded(
-                        flex: 2,
-                        child: DropdownButton<int>(
-                          value: assetTargetRatios[index],
-                          isExpanded: true,
-                          underline: Container(
-                            height: 1,
-                            color: Colors.grey.shade400,
-                          ),
-                          items: List.generate(101, (i) => i)
+                // 자산 개수 선택
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 15.0),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('자산 개수 선택:'),
+                        const SizedBox(width: 8),
+                        DropdownButton<int>(
+                          value: assetCount,
+                          items: List.generate(5, (i) => i + 1)
                               .map((i) => DropdownMenuItem<int>(
                                     value: i,
-                                    child: Text('$i%'),
+                                    child: Text('$i'),
                                   ))
                               .toList(),
                           onChanged: (value) {
                             if (value != null) {
-                              setState(() {
-                                assetTargetRatios[index] = value;
-                              });
+                              updateAssetCount(value);
                             }
                           },
                         ),
+                      ],
+                    ),
+                  ),
+                ),
+                
+                // 헤더
+                Row(
+                  children: [
+                    _buildHeaderCell('자산명', flex: isSmallScreen ? 100 : 125),
+                    _buildHeaderCell('평가 금액', flex: isSmallScreen ? 140 : 165),
+                    _buildHeaderCell('현재 비중', flex: isSmallScreen ? 70 : 85),
+                    _buildHeaderCell('목표 비중', flex: isSmallScreen ? 70 : 85),
+                  ],
+                ),
+                
+                // 자산 목록
+                ...List.generate(assetCount, (index) {
+                  double currentValue = double.tryParse(assetValueControllers[index].text.replaceAll(',', '')) ?? 0;
+                  double currentRatio = getCurrentRatio(currentValue);
+                  
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 10.0),
+                    child: Row(
+                      children: [
+                        // 자산명
+                        Flexible(
+                          flex: isSmallScreen ? 100 : 125,
+                          child: _buildClearableTextField(
+                            controller: assetNameControllers[index],
+                            onChanged: (value) {
+                              setState(() {
+                                assetNames[index] = value;
+                              });
+                              saveState();
+                            },
+                            onClear: () => clearAssetName(index),
+                            keyboardType: TextInputType.text,
+                            maxLength: 8,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        
+                        // 평가 금액
+                        Flexible(
+                          flex: isSmallScreen ? 140 : 165,
+                          child: _buildClearableTextField(
+                            controller: assetValueControllers[index],
+                            onChanged: (_) => formatNumberWithCommas(assetValueControllers[index]),
+                            onClear: () => clearAssetValue(index),
+                            keyboardType: TextInputType.number,
+                          ),
+                        ),
+                        const SizedBox(width: 5),
+                        
+                        // 현재 비중
+                        Flexible(
+                          flex: isSmallScreen ? 70 : 85,
+                          child: _buildDisabledTextField('${currentRatio.toStringAsFixed(1)}%'),
+                        ),
+                        const SizedBox(width: 5),
+                        
+                        // 목표 비중
+                        Flexible(
+                          flex: isSmallScreen ? 70 : 85,
+                          child: Container(
+                            height: 30,
+                            decoration: BoxDecoration(
+                              border: Border.all(color: Colors.grey.shade400),
+                              borderRadius: BorderRadius.circular(5),
+                            ),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<int>(
+                                value: assetTargetRatios[index],
+                                isExpanded: true,
+                                alignment: Alignment.center,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.black,
+                                ),
+                                icon: const Icon(Icons.arrow_drop_down, size: 16),
+                                items: List.generate(101, (i) => i)
+                                    .map((i) => DropdownMenuItem<int>(
+                                          value: i,
+                                          alignment: Alignment.center,
+                                          child: Text('$i%'),
+                                        ))
+                                    .toList(),
+                                onChanged: (value) {
+                                  if (value != null) {
+                                    setState(() {
+                                      assetTargetRatios[index] = value;
+                                      updateRatios();
+                                    });
+                                  }
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                
+                // 현금 입력 행
+                Padding(
+                  padding: const EdgeInsets.only(top: 10.0),
+                  child: Row(
+                    children: [
+                      // 자산명
+                      Flexible(
+                        flex: isSmallScreen ? 100 : 125,
+                        child: _buildDisabledTextField('보유 KRW'),
+                      ),
+                      const SizedBox(width: 5),
+                      
+                      // 평가 금액
+                      Flexible(
+                        flex: isSmallScreen ? 140 : 165,
+                        child: _buildClearableTextField(
+                          controller: cashController,
+                          onChanged: (_) => formatNumberWithCommas(cashController),
+                          onClear: clearCashValue,
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      
+                      // 현재 비중
+                      Flexible(
+                        flex: isSmallScreen ? 70 : 85,
+                        child: _buildDisabledTextField(
+                          '${getCurrentRatio(double.tryParse(cashController.text.replaceAll(',', '')) ?? 0).toStringAsFixed(1)}%'
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      
+                      // 목표 비중
+                      Flexible(
+                        flex: isSmallScreen ? 70 : 85,
+                        child: _buildDisabledTextField('${getCashTargetRatio()}%'),
                       ),
                     ],
                   ),
-                );
-              },
-            ),
-            
-            const Divider(),
-            
-            // 현금 입력
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4.0),
-              child: Row(
-                children: [
-                  // 자산명
-                  Expanded(
-                    flex: 3,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade400),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        '보유 KRW',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
+                ),
+                
+                // 총 금액
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 10.0),
+                  child: Text(
+                    '총 금액 : ${formatCurrency(totalAmount)} 원',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  const SizedBox(width: 8),
-                  
-                  // 평가 금액
-                  Expanded(
-                    flex: 3,
-                    child: TextField(
-                      controller: cashController,
-                      decoration: const InputDecoration(
-                        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                        isDense: true,
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: TextInputType.number,
-                      onChanged: (_) => formatNumberWithCommas(cashController),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  
-                  // 현재 비중
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade400),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        '${getCurrentRatio(double.tryParse(cashController.text.replaceAll(',', '')) ?? 0).toStringAsFixed(1)}%',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  
-                  // 목표 비중
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.grey.shade400),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        '${getCashTargetRatio()}%',
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // 총 금액
-            Text(
-              '총 금액: ${formatCurrency(totalAmount)} 원',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // 버튼
-            Row(
-              children: [
-                Expanded(
+                ),
+                
+                // 버튼들
+                SizedBox(
+                  width: double.infinity,
                   child: ElevatedButton(
                     onPressed: resetAll,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.grey.shade600,
+                      backgroundColor: const Color(0xFF6c757d),
                       foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(5),
+                      ),
                     ),
-                    child: const Text('초기화'),
+                    child: const Text('초기화', style: TextStyle(fontSize: 16)),
                   ),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
+                
+                const SizedBox(height: 10),
+                
+                SizedBox(
+                  width: double.infinity,
                   child: ElevatedButton(
                     onPressed: calculateRebalancing,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
+                      backgroundColor: const Color(0xFF007BFF),
                       foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(5),
+                      ),
                     ),
-                    child: const Text('계산'),
+                    child: const Text('계산', style: TextStyle(fontSize: 16)),
                   ),
                 ),
+                
+                // 결과 표시 영역
+                if (showResults) ...[
+                  const SizedBox(height: 20),
+                  
+                  if (adjustmentResults.isEmpty)
+                    Center(
+                      child: Text(
+                        '리밸런싱이 필요하지 않습니다.',
+                        style: TextStyle(
+                          color: Colors.green[700],
+                          fontWeight: FontWeight.bold
+                        ),
+                      ),
+                    )
+                  else
+                    ...adjustmentResults.map((result) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2.0),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          result['text'],
+                          style: TextStyle(
+                            color: result['color'],
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    )).toList(),
+                  
+                  if (finalResults.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 10.0),
+                      child: Divider(color: Colors.grey.shade300, height: 1),
+                    ),
+                    
+                    Align(
+                      alignment: Alignment.center,
+                      child: Text(
+                        '리밸런싱 후 현황',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 17,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 10),
+                    
+                    ...finalResults.entries.map((entry) => Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2.0),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '${entry.key} : ${formatCurrency(entry.value['value'])}원 (${entry.value['ratio']}%)',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                    )).toList(),
+                  ],
+                ],
               ],
             ),
-            
-            // 결과
-            if (showResults) ...[
-              const SizedBox(height: 24),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  adjustmentText,
-                  style: const TextStyle(height: 1.5),
-                ),
-              ),
-            ],
-          ],
+          ),
         ),
+      ),
+    );
+  }
+  
+  Widget _buildHeaderCell(String text, {required int flex}) {
+    return Flexible(
+      flex: flex,
+      child: Container(
+        height: 30,
+        alignment: Alignment.center,
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildClearableTextField({
+    required TextEditingController controller,
+    required Function(String) onChanged,
+    required Function() onClear,
+    TextInputType keyboardType = TextInputType.text,
+    int? maxLength,
+  }) {
+    return Container(
+      height: 30,
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade400),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Stack(
+        alignment: Alignment.centerRight,
+        children: [
+          TextField(
+            controller: controller,
+            style: const TextStyle(fontSize: 12),
+            textAlign: TextAlign.center,
+            decoration: const InputDecoration(
+              contentPadding: EdgeInsets.only(left: 8, right: 24, top: 8, bottom: 8),
+              border: InputBorder.none,
+              isDense: true,
+            ),
+            keyboardType: keyboardType,
+            onChanged: onChanged,
+            maxLength: maxLength,
+            buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
+          ),
+          Material(
+            color: Colors.transparent,
+            child: SizedBox(
+              width: 24,
+              height: 30,
+              child: InkWell(
+                child: const Icon(Icons.clear, size: 16, color: Colors.grey),
+                onTap: onClear,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildDisabledTextField(String text) {
+    return Container(
+      height: 30,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade400),
+        borderRadius: BorderRadius.circular(5),
+        color: Colors.grey.shade100,
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 12),
+        textAlign: TextAlign.center,
       ),
     );
   }
