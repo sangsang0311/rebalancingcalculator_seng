@@ -32,56 +32,15 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  late final WebViewController controller;
+  late final WebViewController? controller;
 
   @override
   void initState() {
     super.initState();
     
-    // 웹과 모바일에서 다른 방식으로 HTML 로드
-    if (kIsWeb) {
-      // 웹에서는 직접 사이트로 이동
-      controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..loadHtmlString('''
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-          <title>리밸런싱 계산기</title>
-          <style>
-            body {
-              font-family: Arial, sans-serif;
-              text-align: center;
-              padding: 20px;
-              color: #333;
-            }
-            h1 {
-              color: #6200ee;
-            }
-            .message {
-              background-color: #f0f0f0;
-              padding: 20px;
-              border-radius: 8px;
-              margin-top: 40px;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-          </style>
-        </head>
-        <body>
-          <h1>리밸런싱 계산기</h1>
-          <div class="message">
-            <p>현재 웹 버전에서 리밸런싱 계산기 콘텐츠를 로드하는데 문제가 발생했습니다.</p>
-            <p>모바일 앱에서 더 나은 경험을 제공해 드립니다.</p>
-            <p>개발자에게 문의하시거나 잠시 후 다시 시도해 주세요.</p>
-          </div>
-        </body>
-        </html>
-        ''')
-        ..setBackgroundColor(Colors.transparent);
-    } else {
-      // 모바일에서는 assets에서 로드
+    // 웹 버전에서는 WebViewController를 사용하지 않음
+    if (!kIsWeb) {
+      // 모바일에서만 WebViewController 초기화
       controller = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..loadFlutterAsset('assets/index.html')
@@ -89,7 +48,7 @@ class _MyHomePageState extends State<MyHomePage> {
         ..setNavigationDelegate(
           NavigationDelegate(
             onPageFinished: (String url) {
-              controller.runJavaScript('''
+              controller?.runJavaScript('''
                 document.querySelector('meta[name="viewport"]').setAttribute(
                   'content',
                   'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'
@@ -98,6 +57,8 @@ class _MyHomePageState extends State<MyHomePage> {
             },
           ),
         );
+    } else {
+      controller = null;
     }
   }
 
@@ -115,7 +76,70 @@ class _MyHomePageState extends State<MyHomePage> {
         ),
       ),
       body: SafeArea(
-        child: WebViewWidget(controller: controller),
+        child: kIsWeb 
+            ? WebVersionContent() // 웹 버전에서는 일반 Flutter 위젯 사용
+            : WebViewWidget(controller: controller!), // 모바일에서는 WebView 사용
+      ),
+    );
+  }
+}
+
+// 웹 버전에서 표시할 콘텐츠 위젯
+class WebVersionContent extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.calculate_outlined,
+              size: 80,
+              color: Color(0xFF6200EE),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              '리밸런싱 계산기',
+              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                color: const Color(0xFF6200EE),
+                fontWeight: FontWeight.bold
+              ),
+            ),
+            const SizedBox(height: 40),
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    '현재 웹 버전에서 계산기 기능을 준비 중입니다',
+                    style: Theme.of(context).textTheme.titleMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    '모바일 앱에서 더 나은 경험을 제공해 드립니다.\n개발자에게 문의하시거나 잠시 후 다시 시도해 주세요.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
