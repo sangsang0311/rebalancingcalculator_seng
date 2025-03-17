@@ -1,9 +1,9 @@
 {
-    "name": "리밸런싱 계산기",
-    "short_name": "리밸런싱",
+    "name": "리밸런싱계산기",
+    "short_name": "리밸런싱계산기",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#f4f4f9",
+    "background_color": "#ffffff",
     "theme_color": "#007BFF",
     "description": "자산 리밸런싱 계산기",
     "orientation": "portrait-primary",
