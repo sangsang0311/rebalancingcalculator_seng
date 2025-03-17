@@ -60,22 +60,22 @@ class _MyHomePageState extends State<MyHomePage> {
     
     // 모바일에서만 WebViewController 초기화
     if (isWebViewEnabled) {
-      controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..loadFlutterAsset('assets/index.html')
-        ..setBackgroundColor(Colors.transparent)
-        ..setNavigationDelegate(
-          NavigationDelegate(
-            onPageFinished: (String url) {
+    controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..loadFlutterAsset('assets/index.html')
+      ..setBackgroundColor(Colors.transparent)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageFinished: (String url) {
               controller?.runJavaScript('''
-                document.querySelector('meta[name="viewport"]').setAttribute(
-                  'content',
-                  'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'
-                );
-              ''');
-            },
-          ),
-        );
+              document.querySelector('meta[name="viewport"]').setAttribute(
+                'content',
+                'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'
+              );
+            ''');
+          },
+        ),
+      );
     } else {
       controller = null;
     }
@@ -473,12 +473,12 @@ class _RebalancingCalculatorState extends State<RebalancingCalculator> {
     // 상태 저장 (초기화된 상태가 저장됨)
     saveState();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final isSmallScreen = size.width < 600;
-    
+
     return SingleChildScrollView(
       child: Padding(
         padding: const EdgeInsets.all(8.0),
